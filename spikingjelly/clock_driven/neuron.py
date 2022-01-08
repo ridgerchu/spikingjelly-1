@@ -263,7 +263,7 @@ class IFNode(BaseNode):
 
 class MultiStepIFNode(IFNode):
     def __init__(self, v_threshold: float = 1., v_reset: float = 0.,
-                 surrogate_function: Callable = surrogate.Sigmoid(), detach_reset: bool = False, backend='torch'):
+                 surrogate_function: Callable = surrogate.Sigmoid(), detach_reset: bool = False, backend='torch', cp_inplace: bool=False):
         """
         * :ref:`API in English <MultiStepIFNode.__init__-en>`
 
@@ -340,20 +340,22 @@ class MultiStepIFNode(IFNode):
         assert not (backend == 'cupy' and neuron_kernel is None), 'cupy is not installed'
 
         self.backend = backend
+        self.cp_inplace = cp_inplace
 
     def forward(self, x_seq: torch.Tensor):
         assert x_seq.dim() > 1
         # x_seq.shape = [T, *]
         self.v_seq = torch.zeros_like(x_seq.data)
-        spike_seq = torch.zeros_like(x_seq.data)
 
         if self.backend == 'torch':
+            spike_seq = torch.zeros_like(x_seq.data)
             for t in range(x_seq.shape[0]):
                 spike_seq[t] = super().forward(x_seq[t])
                 self.v_seq[t] = self.v
             return spike_seq
 
         elif self.backend == 'cupy':
+            in_shape = x_seq.shape
             if isinstance(self.v, float):
                 v_init = self.v
                 self.v = torch.zeros_like(x_seq[0].data)
@@ -361,10 +363,10 @@ class MultiStepIFNode(IFNode):
                     torch.fill_(self.v, v_init)
 
             spike_seq, self.v_seq = neuron_kernel.MultiStepIFNodePTT.apply(
-                x_seq.flatten(1), self.v.flatten(0), self.v_threshold, self.v_reset, self.detach_reset, self.surrogate_function.cuda_code)
+                x_seq.flatten(1), self.v.flatten(0), self.v_threshold, self.v_reset, self.detach_reset, self.cp_inplace, self.surrogate_function.cuda_code)
 
-            spike_seq = spike_seq.reshape(x_seq.shape)
-            self.v_seq = self.v_seq.reshape(x_seq.shape)
+            spike_seq = spike_seq.reshape(in_shape)
+            self.v_seq = self.v_seq.reshape(in_shape)
 
             self.v = self.v_seq[-1].clone()
 
@@ -477,7 +479,7 @@ class LIFNode(BaseNode):
 class MultiStepLIFNode(LIFNode):
     def __init__(self, tau: float = 2., decay_input: bool = True, v_threshold: float = 1.,
                  v_reset: float = 0., surrogate_function: Callable = surrogate.Sigmoid(),
-                 detach_reset: bool = False, backend='torch'):
+                 detach_reset: bool = False, backend='torch', cp_inplace: bool=False):
         """
         * :ref:`API in English <MultiStepLIFNode.__init__-en>`
 
@@ -565,20 +567,22 @@ class MultiStepLIFNode(LIFNode):
         assert backend == 'torch' or backend == 'cupy'
         assert not (backend == 'cupy' and neuron_kernel is None), 'cupy is not installed'
         self.backend = backend
+        self.cp_inplace = cp_inplace
 
     def forward(self, x_seq: torch.Tensor):
         assert x_seq.dim() > 1
         # x_seq.shape = [T, *]
         self.v_seq = torch.zeros_like(x_seq.data)
-        spike_seq = torch.zeros_like(x_seq.data)
 
         if self.backend == 'torch':
+            spike_seq = torch.zeros_like(x_seq.data)
             for t in range(x_seq.shape[0]):
                 spike_seq[t] = super().forward(x_seq[t])
                 self.v_seq[t] = self.v
             return spike_seq
 
         elif self.backend == 'cupy':
+            x_seq_shape = x_seq.shape
             if isinstance(self.v, float):
                 v_init = self.v
                 self.v = torch.zeros_like(x_seq[0].data)
@@ -587,10 +591,10 @@ class MultiStepLIFNode(LIFNode):
 
 
             spike_seq, self.v_seq = neuron_kernel.MultiStepLIFNodePTT.apply(
-                x_seq.flatten(1), self.v.flatten(0), self.decay_input, self.tau, self.v_threshold, self.v_reset, self.detach_reset, self.surrogate_function.cuda_code)
+                x_seq.flatten(1), self.v.flatten(0), self.decay_input, self.tau, self.v_threshold, self.v_reset, self.detach_reset, self.cp_inplace, self.surrogate_function.cuda_code)
 
-            spike_seq = spike_seq.reshape(x_seq.shape)
-            self.v_seq = self.v_seq.reshape(x_seq.shape)
+            spike_seq = spike_seq.reshape(x_seq_shape)
+            self.v_seq = self.v_seq.reshape(x_seq_shape)
 
             self.v = self.v_seq[-1].clone()
 
@@ -709,7 +713,7 @@ class ParametricLIFNode(BaseNode):
 class MultiStepParametricLIFNode(ParametricLIFNode):
     def __init__(self, init_tau: float = 2., decay_input: bool = True, v_threshold: float = 1.,
                  v_reset: float = 0., surrogate_function: Callable = surrogate.Sigmoid(),
-                 detach_reset: bool = False, backend='torch'):
+                 detach_reset: bool = False, backend='torch', cp_inplace: bool=False):
         """
         * :ref:`API in English <MultiStepParametricLIFNode.__init__-en>`
 
@@ -805,20 +809,22 @@ class MultiStepParametricLIFNode(ParametricLIFNode):
         assert backend == 'torch' or backend == 'cupy'
         assert not (backend == 'cupy' and neuron_kernel is None), 'cupy is not installed'
         self.backend = backend
+        self.cp_inplace = cp_inplace
 
     def forward(self, x_seq: torch.Tensor):
         assert x_seq.dim() > 1
         # x_seq.shape = [T, *]
         self.v_seq = torch.zeros_like(x_seq.data)
-        spike_seq = torch.zeros_like(x_seq.data)
 
         if self.backend == 'torch':
+            spike_seq = torch.zeros_like(x_seq.data)
             for t in range(x_seq.shape[0]):
                 spike_seq[t] = super().forward(x_seq[t])
                 self.v_seq[t] = self.v
             return spike_seq
 
         elif self.backend == 'cupy':
+            x_seq_shape = x_seq.shape
             if isinstance(self.v, float):
                 v_init = self.v
                 self.v = torch.zeros_like(x_seq[0].data)
@@ -827,10 +833,10 @@ class MultiStepParametricLIFNode(ParametricLIFNode):
 
 
             spike_seq, self.v_seq = neuron_kernel.MultiStepParametricLIFNodePTT.apply(
-                x_seq.flatten(1), self.v.flatten(0), self.w.sigmoid(), self.decay_input, self.v_threshold, self.v_reset, self.detach_reset, self.surrogate_function.cuda_code)
+                x_seq.flatten(1), self.v.flatten(0), self.w.sigmoid(), self.decay_input, self.v_threshold, self.v_reset, self.detach_reset, self.cp_inplace, self.surrogate_function.cuda_code)
 
-            spike_seq = spike_seq.reshape(x_seq.shape)
-            self.v_seq = self.v_seq.reshape(x_seq.shape)
+            spike_seq = spike_seq.reshape(x_seq_shape)
+            self.v_seq = self.v_seq.reshape(x_seq_shape)
 
             self.v = self.v_seq[-1].clone()
 
@@ -1035,7 +1041,7 @@ class EIFNode(BaseNode):
 
 class MultiStepEIFNode(EIFNode):
     def __init__(self, tau: float = 2., delta_T: float = 1., theta_rh: float = .8, v_threshold: float = 1., v_rest: float = 0., v_reset: float = -0.1,
-                 surrogate_function: Callable = surrogate.Sigmoid(), detach_reset: bool = False, backend='torch'):
+                 surrogate_function: Callable = surrogate.Sigmoid(), detach_reset: bool = False, backend='torch', cp_inplace: bool=False):
         """
         * :ref:`API in English <MultiStepEIFNode.__init__-en>`
 
@@ -1130,20 +1136,22 @@ class MultiStepEIFNode(EIFNode):
         assert backend == 'torch' or backend == 'cupy'
         assert not (backend == 'cupy' and neuron_kernel is None), 'cupy is not installed'
         self.backend = backend
+        self.cp_inplace = cp_inplace
 
     def forward(self, x_seq: torch.Tensor):
         assert x_seq.dim() > 1
         # x_seq.shape = [T, *]
         self.v_seq = torch.zeros_like(x_seq.data)
-        spike_seq = torch.zeros_like(x_seq.data)
 
         if self.backend == 'torch':
+            spike_seq = torch.zeros_like(x_seq.data)
             for t in range(x_seq.shape[0]):
                 spike_seq[t] = super().forward(x_seq[t])
                 self.v_seq[t] = self.v
             return spike_seq
 
         elif self.backend == 'cupy':
+            x_seq_shape = x_seq.shape
             if isinstance(self.v, float):
                 v_init = self.v
                 self.v = torch.zeros_like(x_seq[0].data)
@@ -1152,10 +1160,10 @@ class MultiStepEIFNode(EIFNode):
 
 
             spike_seq, self.v_seq = neuron_kernel.MultiStepEIFNodePTT.apply(
-                x_seq.flatten(1), self.v.flatten(0), self.tau, self.v_threshold, self.v_reset, self.v_rest, self.theta_rh, self.delta_T, self.detach_reset, self.surrogate_function.cuda_code)
+                x_seq.flatten(1), self.v.flatten(0), self.tau, self.v_threshold, self.v_reset, self.v_rest, self.theta_rh, self.delta_T, self.detach_reset, self.cp_inplace, self.surrogate_function.cuda_code)
 
-            spike_seq = spike_seq.reshape(x_seq.shape)
-            self.v_seq = self.v_seq.reshape(x_seq.shape)
+            spike_seq = spike_seq.reshape(x_seq_shape)
+            self.v_seq = self.v_seq.reshape(x_seq_shape)
 
             self.v = self.v_seq[-1].clone()
 
@@ -1204,20 +1212,7 @@ class MultiStepGeneralNode(GeneralNode):
             return spike_seq
 
         elif self.backend == 'cupy':
-            if isinstance(self.v, float):
-                v_init = self.v
-                self.v = torch.zeros_like(x_seq[0].data)
-                if v_init != 0.:
-                    torch.fill_(self.v, v_init)
-
             raise NotImplementedError
-
-            spike_seq = spike_seq.reshape(x_seq.shape)
-            self.v_seq = self.v_seq.reshape(x_seq.shape)
-
-            self.v = self.v_seq[-1].clone()
-
-            return spike_seq
         else:
             raise NotImplementedError
 
