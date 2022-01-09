@@ -241,7 +241,7 @@ try:
 
         @staticmethod
         def forward(ctx, x_seq: torch.Tensor, v_last: torch.Tensor, v_threshold: float, v_reset: float,
-                    detach_reset: bool, inplace: bool, sg_cuda_code_fun):
+                    detach_reset: bool, sg_cuda_code_fun):
             requires_grad = x_seq.requires_grad or v_last.requires_grad
             device = x_seq.get_device()
             if x_seq.dtype == torch.float32:
@@ -263,11 +263,7 @@ try:
 
             v_seq = torch.zeros_like(x_seq.data)
             h_seq = torch.zeros_like(x_seq.data)
-            if inplace:
-                spike_seq = x_seq
-                ctx.mark_dirty(x_seq)
-            else:
-                spike_seq = torch.zeros_like(x_seq.data)
+            spike_seq = torch.zeros_like(x_seq.data)
 
             v_v_seq = torch.cat((v_last.unsqueeze(0), v_seq))
 
@@ -384,9 +380,9 @@ try:
                     )
                 )
             if ctx.use_pad:
-                return grad_x_seq[..., :-1], grad_v_last[..., :-1], None, None, None, None, None
+                return grad_x_seq[..., :-1], grad_v_last[..., :-1], None, None, None, None
             else:
-                return grad_x_seq, grad_v_last, None, None, None, None, None
+                return grad_x_seq, grad_v_last, None, None, None, None
 
 
     class MultiStepLIFNodePTT(torch.autograd.Function):
@@ -681,7 +677,7 @@ try:
 
         @staticmethod
         def forward(ctx, x_seq: torch.Tensor, v_last: torch.Tensor, decay_input: bool, tau: float, v_threshold: float, v_reset: float,
-                    detach_reset: bool, inplace: bool, sg_cuda_code_fun):
+                    detach_reset: bool, sg_cuda_code_fun):
             requires_grad = x_seq.requires_grad or v_last.requires_grad
             device = x_seq.get_device()
             if x_seq.dtype == torch.float32:
@@ -703,11 +699,7 @@ try:
 
             v_seq = torch.zeros_like(x_seq.data)
             h_seq = torch.zeros_like(x_seq.data)
-            if inplace:
-                spike_seq = x_seq
-                ctx.mark_dirty(x_seq)
-            else:
-                spike_seq = torch.zeros_like(x_seq.data)
+            spike_seq = torch.zeros_like(x_seq.data)
 
             v_v_seq = torch.cat((v_last.unsqueeze(0), v_seq))
 
@@ -835,9 +827,9 @@ try:
                     )
                 )
             if ctx.use_pad:
-                return grad_x_seq[..., :-1], grad_v_last[..., :-1], None, None, None, None, None, None, None
+                return grad_x_seq[..., :-1], grad_v_last[..., :-1], None, None, None, None, None, None
             else:
-                return grad_x_seq, grad_v_last, None, None, None, None, None, None, None
+                return grad_x_seq, grad_v_last, None, None, None, None, None, None
 
 
     class MultiStepParametricLIFNodePTT(torch.autograd.Function):
@@ -1077,7 +1069,7 @@ try:
 
         @staticmethod
         def forward(ctx, x_seq: torch.Tensor, v_last: torch.Tensor, reciprocal_tau: torch.Tensor, decay_input: bool, v_threshold: float,
-                    v_reset: float, detach_reset: bool, inplace: bool, sg_cuda_code_fun):
+                    v_reset: float, detach_reset: bool, sg_cuda_code_fun):
             requires_grad = x_seq.requires_grad or v_last.requires_grad
             device = x_seq.get_device()
             if x_seq.dtype == torch.float32:
@@ -1101,11 +1093,7 @@ try:
 
             v_seq = torch.zeros_like(x_seq.data)
             h_seq = torch.zeros_like(x_seq.data)
-            if inplace:
-                spike_seq = x_seq
-                ctx.mark_dirty(x_seq)
-            else:
-                spike_seq = torch.zeros_like(x_seq.data)
+            spike_seq = torch.zeros_like(x_seq.data)
 
             v_v_seq = torch.cat((v_last.unsqueeze(0), v_seq))
             tau = 1. / reciprocal_tau.item()
@@ -1239,9 +1227,9 @@ try:
                 )
 
             if ctx.use_pad:
-                return grad_x_seq[..., :-1], grad_v_last[..., :-1], grad_reciprocal_tau, None, None, None, None, None, None
+                return grad_x_seq[..., :-1], grad_v_last[..., :-1], grad_reciprocal_tau, None, None, None, None, None
             else:
-                return grad_x_seq, grad_v_last, grad_reciprocal_tau, None, None, None, None, None, None
+                return grad_x_seq, grad_v_last, grad_reciprocal_tau, None, None, None, None, None
 
 
     def check_multi_step_neuron_output_and_grad(device, multi_step_neuron, shape = [65, 15, 511], *neu_args, **neu_kwargs):
@@ -1538,7 +1526,7 @@ try:
             return cupy.RawKernel(code, kernel_name, options=configure.cuda_compiler_options, backend=configure.cuda_compiler_backend)
 
         @staticmethod
-        def forward(ctx, x_seq: torch.Tensor, v_last: torch.Tensor, tau: float, v_threshold: float, v_reset: float, v_rest: float, theta_rh: float, delta_T: float, detach_reset: bool, inplace: bool, sg_cuda_code_fun):
+        def forward(ctx, x_seq: torch.Tensor, v_last: torch.Tensor, tau: float, v_threshold: float, v_reset: float, v_rest: float, theta_rh: float, delta_T: float, detach_reset: bool, sg_cuda_code_fun):
             requires_grad = x_seq.requires_grad or v_last.requires_grad
             device = x_seq.get_device()
             if x_seq.dtype == torch.float32:
@@ -1560,11 +1548,7 @@ try:
 
             v_seq = torch.zeros_like(x_seq.data)
             h_seq = torch.zeros_like(x_seq.data)
-            if inplace:
-                spike_seq = x_seq
-                ctx.mark_dirty(x_seq)
-            else:
-                spike_seq = torch.zeros_like(x_seq.data)
+            spike_seq = torch.zeros_like(x_seq.data)
 
             v_v_seq = torch.cat((v_last.unsqueeze(0), v_seq))
 
@@ -1685,9 +1669,9 @@ try:
                     )
                 )
             if ctx.use_pad:
-                return grad_x_seq[..., :-1], grad_v_last[..., :-1], None, None, None, None, None, None, None, None, None
+                return grad_x_seq[..., :-1], grad_v_last[..., :-1], None, None, None, None, None, None, None, None
             else:
-                return grad_x_seq, grad_v_last, None, None, None, None, None, None, None, None, None
+                return grad_x_seq, grad_v_last, None, None, None, None, None, None, None, None
 
 
     def save_cuda_codes(cu_file_path: str = './spikingjelly/clock_driven/neuron_kernel.cu'):
