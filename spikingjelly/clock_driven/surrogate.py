@@ -3,8 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 import math
 tab4_str = '\t\t\t\t'  # used for aligning code
-curly_bracket_l = '{'
-curly_bracket_r = '}'
 
 def heaviside(x: torch.Tensor):
     '''
@@ -1061,13 +1059,13 @@ class PiecewiseLeakyReLU(MultiArgsSurrogateFunctionBase):
             {tab4_str}const float {sg_name}_x_abs = fabsf({x});
             float {y};
             if ({sg_name}_x_abs > {w})
-            {curly_bracket_l}
+            {'{'}
                 {y} = {c};
-            {curly_bracket_r}
+            {'}'}
             else
-            {curly_bracket_l}
+            {'{'}
                 {y} = {w_inv};
-            {curly_bracket_r}
+            {'}'}
             '''
         elif dtype == 'fp16':
             code += f'''

@@ -6,66 +6,56 @@ try:
     from . import cu_kernel_opt, surrogate
     from .. import configure
     import numpy as np
-        
-
 
     class MultiStepIFNodePTT(torch.autograd.Function):
         @staticmethod
-        def create_fptt_kernel(hard_reset: bool, dtype: str):
-            kernel_name = f'IFNode_fptt_{"hard" if hard_reset else "soft"}Reset_{dtype}'
+        def create_fptt_kernel(store_v_seq: bool, hard_reset: bool, dtype: str):
+            kernel_name = f'IFNode_fptt_store_v_seq_{store_v_seq}_{"hard" if hard_reset else "soft"}Reset_{dtype}'
 
             if dtype == 'fp32':
                 code = rf'''
                 extern "C" __global__
-                void {kernel_name}(const float* x_seq, float* v_v_seq, float* h_seq, float* spike_seq, 
+                void {kernel_name}(const float* x_seq, float* {'v_v_seq' if store_v_seq else 'v_t'}, float* h_seq, float* spike_seq, 
                 const float & v_threshold, {'const float & v_reset,' if hard_reset else ''}
                 const int & neuron_num, const int & numel) 
                 '''
 
-                code += r'''
-                {
+                code += fr'''
+                {'{'}
                 const int index = blockIdx.x * blockDim.x + threadIdx.x;
                 if (index < neuron_num)
-                {
+                {'{'}
                     const int dt = neuron_num;
                     for(int mem_offset = 0; mem_offset < numel; mem_offset += neuron_num)
-                    {
+                    {'{'}
                         const int t = index + mem_offset;
-                        h_seq[t] = v_v_seq[t] + x_seq[t];
+                        h_seq[t] = {'v_v_seq[t]' if store_v_seq else 'v_t[index]'} + x_seq[t];
                         if (h_seq[t] >= v_threshold)
                 '''
 
-                if hard_reset:
-                    code += r'''
-                        {
-                            spike_seq[t] = 1.0f;
-                            v_v_seq[t + dt] = v_reset;
-                        }
-                    '''
-                else:
-                    code += r'''
-                        {
-                            spike_seq[t] = 1.0f;
-                            v_v_seq[t + dt] = h_seq[t] - v_threshold;
-                        }
-                    '''
+                code += fr'''
+                    {'{'}
+                        spike_seq[t] = 1.0f;
+                        {'v_v_seq[t + dt]' if store_v_seq else 'v_t[index]'} = {'v_reset' if hard_reset else 'h_seq[t] - v_threshold'};
+                    {'}'}
+                '''
 
-                code += r'''
+                code += fr'''
                         else
-                        {
+                        {'{'}
                             spike_seq[t] = 0.0f;
-                            v_v_seq[t + dt] = h_seq[t];
-                        }
-                    }
-                }
-                }
+                            {'v_v_seq[t + dt]' if store_v_seq else 'v_t[index]'} = h_seq[t];
+                        {'}'}
+                    {'}'}
+                {'}'}
+                {'}'}
                 '''
 
             elif dtype == 'fp16':
                 code = rf'''
                 #include <cuda_fp16.h>
                 extern "C" __global__
-                void {kernel_name}(const half2* x_seq, half2* v_v_seq, half2* h_seq, half2* spike_seq, 
+                void {kernel_name}(const half2* x_seq, half2* {'v_v_seq' if store_v_seq else 'v_t'}, half2* h_seq, half2* spike_seq, 
                 const half & v_threshold, {'const half & v_reset,' if hard_reset else ''}
                 const int & neuron_num, const int & numel) 
                 '''
@@ -85,22 +75,22 @@ try:
                         const half2 v_reset_half2 = __half2half2(v_reset);
                     '''
 
-                code += r'''
+                code += fr'''
                     for(int mem_offset = 0; mem_offset < numel_2; mem_offset += stride)
-                    {
+                    {'{'}
                         const int t = index + mem_offset;
-                        h_seq[t] = __hadd2(v_v_seq[t], x_seq[t]);
+                        h_seq[t] = __hadd2({'v_v_seq[t]' if store_v_seq else 'v_t[index]'}, x_seq[t]);
 
                         spike_seq[t] = __hgeu2(h_seq[t], v_threshold_half2);
                 '''
 
                 if hard_reset:
-                    code += r'''
-                        v_v_seq[t + stride] = __hadd2(__hmul2(spike_seq[t], v_reset_half2), __hmul2(__hsub2(__float2half2_rn(1.0f), spike_seq[t]), h_seq[t]));
+                    code += fr'''
+                        {'v_v_seq[t + stride]' if store_v_seq else 'v_t[index]'} = __hadd2(__hmul2(spike_seq[t], v_reset_half2), __hmul2(__hsub2(__float2half2_rn(1.0f), spike_seq[t]), h_seq[t]));
                     '''
                 else:
-                    code += r'''
-                        v_v_seq[t + stride] = __hadd2(__hmul2(spike_seq[t], __hsub2(h_seq[t], v_threshold_half2)), __hmul2(__hsub2(__float2half2_rn(1.0f), spike_seq[t]), h_seq[t]));
+                    code += fr'''
+                        {'v_v_seq[t + stride]' if store_v_seq else 'v_t[index]'} = __hadd2(__hmul2(spike_seq[t], __hsub2(h_seq[t], v_threshold_half2)), __hmul2(__hsub2(__float2half2_rn(1.0f), spike_seq[t]), h_seq[t]));
                     '''
 
                 code += r'''
@@ -114,9 +104,9 @@ try:
             return cupy.RawKernel(code, kernel_name, options=configure.cuda_compiler_options, backend=configure.cuda_compiler_backend)
 
         @staticmethod
-        def create_bptt_kernel(sg_cuda_code_fun, hard_reset: bool, detach_reset: bool, dtype: str):
+        def create_bptt_kernel(sg_cuda_code_fun, store_v_seq: bool, hard_reset: bool, detach_reset: bool, dtype: str):
 
-            kernel_name = f'IFNode_bptt_{"hard" if hard_reset else "soft"}Reset_{"detachReset" if detach_reset else ""}_{dtype}'
+            kernel_name = f'IFNode_bptt_store_v_seq_{store_v_seq}_{"hard" if hard_reset else "soft"}Reset_{"detachReset" if detach_reset else ""}_{dtype}'
 
             code_grad_s_to_h = sg_cuda_code_fun(x='over_th', y='grad_s_to_h', dtype=dtype)
 
@@ -124,7 +114,7 @@ try:
                 code = fr'''
                 extern "C" __global__
                 void {kernel_name}(
-                const float* grad_spike_seq, const float* grad_v_seq, const float* h_seq, const float* spike_seq,
+                const float* grad_spike_seq, const float* {'grad_v_seq' if store_v_seq else 'grad_v_t'}, const float* h_seq, const float* spike_seq,
                 float* grad_x_seq, float* grad_v_last,
                 const float & v_threshold, {'const float & v_reset,' if hard_reset else ''}
                 const int & neuron_num, const int & numel)
@@ -142,6 +132,7 @@ try:
                             const float over_th = h_seq[t] - v_threshold;
                 '''
                 code += code_grad_s_to_h
+
                 if detach_reset:
                     if hard_reset:
                         code_grad_v_to_h = r'''
@@ -164,14 +155,13 @@ try:
                         '''
 
                 code += code_grad_v_to_h
-                code += r'''
+                code += fr'''
                     grad_h = grad_spike_seq[t] * grad_s_to_h + (grad_v_seq[t] + grad_h) * grad_v_to_h;
-                    // grad_h = fmaf(grad_spike_seq[t], grad_s_to_h, (grad_v_seq[t] + grad_h) * grad_v_to_h);
                     grad_x_seq[t] = grad_h;
-                    }
+                    {'}'}
                 grad_v_last[index] = grad_h;
-                }
-                }
+                {'}'}
+                {'}'}
                 '''
 
             elif dtype == 'fp16':
@@ -179,7 +169,7 @@ try:
                 #include <cuda_fp16.h>
                 extern "C" __global__
                 void {kernel_name}(
-                const half2* grad_spike_seq, const half2* grad_v_seq, const half2* h_seq, const half2* spike_seq,
+                const half2* grad_spike_seq, const half2* {'grad_v_seq' if store_v_seq else 'grad_v_t'}, const half2* h_seq, const half2* spike_seq,
                 half2* grad_x_seq, half2* grad_v_last,
                 const half & v_threshold, {'const half & v_reset,' if hard_reset else ''}
                 const int & neuron_num, const int & numel)
@@ -227,13 +217,13 @@ try:
                         '''
 
                 code += code_grad_v_to_h
-                code += r'''
+                code += fr'''
                         grad_h = __hfma2(__hadd2(grad_v_seq[t], grad_h), grad_v_to_h, __hmul2(grad_spike_seq[t], grad_s_to_h));
                         grad_x_seq[t] = grad_h;
-                        }
+                        {'}'}
                 grad_v_last[index] = grad_h;
-                }
-                }
+                {'}'}
+                {'}'}
                 '''
             else:
                 raise TypeError
